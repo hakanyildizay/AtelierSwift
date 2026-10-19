@@ -1,13 +1,43 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-hover: #21262d;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-strong: #e6edf3;
+  --text-muted: #8b949e;
+  --link: #58a6ff;
+  --link-hover: #79c0ff;
+  --accent: #3fb950;
+
+  /* Syntax highlighting (Prism token classes emitted by Moon) */
+  --code-comment: #8b949e;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-type: #ffa657;
+  --code-function: #d2a8ff;
+  --code-number: #79c0ff;
+  --code-attribute: #7ee787;
+  --code-punctuation: #c9d1d9;
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
   line-height: 1.6;
-  color: #333;
+  color: var(--text);
+  background: var(--bg);
   max-width: 800px;
   margin: 0 auto;
   padding: 0 20px;
@@ -18,29 +48,33 @@ header nav {
   justify-content: space-between;
   align-items: center;
   padding: 20px 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
   margin-bottom: 40px;
 }
 
 .site-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #333;
+  color: var(--text-strong);
   text-decoration: none;
 }
 
 .nav-links a {
-  color: #666;
+  color: var(--text-muted);
   text-decoration: none;
   margin-left: 20px;
 }
 
 .nav-links a:hover {
-  color: #333;
+  color: var(--text-strong);
 }
 
 main {
   min-height: 60vh;
+}
+
+h1, h2, h3 {
+  color: var(--text-strong);
 }
 
 h1 {
@@ -53,16 +87,25 @@ h2 {
   margin: 30px 0 10px;
 }
 
+h3 {
+  font-size: 1.15rem;
+  margin: 24px 0 8px;
+}
+
 p {
   margin-bottom: 16px;
 }
 
+strong {
+  color: var(--text-strong);
+}
+
 a {
-  color: #0066cc;
+  color: var(--link);
 }
 
 a:hover {
-  color: #004499;
+  color: var(--link-hover);
 }
 
 article {
@@ -72,42 +115,55 @@ article {
 .tags {
   list-style: none;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 20px;
+  padding-left: 0;
 }
 
 .tags li a {
-  background: #f0f0f0;
+  background: var(--surface);
+  border: 1px solid var(--border);
   padding: 2px 10px;
   border-radius: 12px;
   font-size: 0.85rem;
-  color: #555;
+  color: var(--text-muted);
   text-decoration: none;
 }
 
 .tags li a:hover {
-  background: #e0e0e0;
+  background: var(--surface-hover);
+  color: var(--text-strong);
 }
 
 .article-card {
   padding: 20px 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 
 .article-card h2 {
   margin: 0 0 8px;
 }
 
+.article-card h2 a {
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.article-card h2 a:hover {
+  color: var(--link);
+}
+
 .article-card p {
-  color: #666;
+  color: var(--text-muted);
   margin: 0;
 }
 
 footer {
   margin-top: 60px;
   padding: 20px 0;
-  border-top: 1px solid #eee;
-  color: #999;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -121,21 +177,80 @@ li {
 }
 
 code {
-  background: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
   font-size: 0.9em;
 }
 
 pre {
-  background: #f5f5f5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   padding: 16px;
   border-radius: 6px;
   overflow-x: auto;
   margin-bottom: 16px;
+  line-height: 1.45;
 }
 
 pre code {
   background: none;
+  border: none;
   padding: 0;
+  color: var(--text);
+}
+
+.token.comment,
+.token.prolog,
+.token.doctype { color: var(--code-comment); font-style: italic; }
+.token.keyword,
+.token.important,
+.token.atrule { color: var(--code-keyword); }
+.token.string,
+.token.string-literal,
+.token.char,
+.token.url { color: var(--code-string); }
+.token.class-name,
+.token.builtin,
+.token.constant { color: var(--code-type); }
+.token.function,
+.token.function-definition { color: var(--code-function); }
+.token.number,
+.token.boolean { color: var(--code-number); }
+.token.attribute,
+.token.directive,
+.token.key,
+.token.property { color: var(--code-attribute); }
+.token.punctuation,
+.token.operator { color: var(--code-punctuation); }
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 0.95em;
+}
+
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+::selection {
+  background: rgba(88, 166, 255, 0.35);
 }
