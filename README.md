@@ -1,4 +1,4 @@
-# Mysite
+# Atelier Swift
 
 A static site built with [Saga](https://github.com/loopwerk/Saga), a code-first static site generator written in Swift.
 
