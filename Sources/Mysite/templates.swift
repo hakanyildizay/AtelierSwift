@@ -15,7 +15,7 @@ func baseHtml(title pageTitle: String, @NodeBuilder children: () -> NodeConverti
     body {
       header {
         nav {
-          a(class: "site-title", href: "/") { "My Site" }
+          a(class: "site-title", href: "/") { "Atelier Swift" }
           div(class: "nav-links") {
             a(href: "/articles/") { "Articles" }
           }
