@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 410" width="760" height="410" role="img" aria-labelledby="title desc">
+  <title id="title">Keyring, signing and JWKS</title>
+  <desc id="desc">AuthService's environment holds JWT_KEYRING with two private keys, key-2026-09-13 and key-2026-10-22, and JWT_ACTIVE_KID set to key-2026-10-22. KeyRotationManager loads them at startup, signs new access tokens with the active key and writes its kid into the token header, and publishes the public halves of both keys at /.well-known/jwks.json.</desc>
+
+  <defs>
+    <symbol id="key" viewBox="0 0 18 12">
+      <circle cx="4.5" cy="6" r="3.5" fill="none" stroke-width="1.6"/>
+      <path d="M8 6 H17 M13.5 6 V9.5 M16.5 6 V8.5" fill="none" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#58a6ff"/>
+    </marker>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .box { font-size: 13.5px; font-weight: 600; fill: #e6edf3; }
+      .sub { font-size: 11px; fill: #8b949e; }
+      .var { font-size: 11.5px; font-weight: 600; fill: #e6edf3; }
+      .kid { font-size: 11px; fill: #a5d6ff; }
+      .text { font-size: 11.5px; fill: #c9d1d9; }
+      .code { font-size: 11px; fill: #a5d6ff; }
+      .label { font-size: 10.5px; }
+    </style>
+  </defs>
+
+  <!-- Canvas -->
+  <rect x="0.5" y="0.5" width="759" height="409" rx="12" fill="#161b22" stroke="#30363d"/>
+
+  <!-- ===== Environment ===== -->
+  <rect x="24" y="24" width="226" height="362" rx="8" fill="#21262d" stroke="#30363d"/>
+  <text x="40" y="48" class="sans box">Environment</text>
+  <text x="40" y="64" class="sans sub">AuthService only</text>
+
+  <rect x="36" y="80" width="202" height="168" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="48" y="100" class="mono var">JWT_KEYRING</text>
+
+  <rect x="48" y="112" width="178" height="56" rx="6" fill="#e3b341" fill-opacity="0.06" stroke="#e3b341" stroke-opacity="0.4"/>
+  <text x="60" y="132" class="mono kid">kid: key-2026-09-13</text>
+  <use href="#key" x="60" y="144" width="18" height="12" stroke="#e3b341" stroke-opacity="0.7"/>
+  <text x="84" y="155" class="sans text">private key (PEM)</text>
+
+  <rect x="48" y="178" width="178" height="56" rx="6" fill="#e3b341" fill-opacity="0.14" stroke="#e3b341"/>
+  <text x="60" y="198" class="mono kid">kid: key-2026-10-22</text>
+  <use href="#key" x="60" y="210" width="18" height="12" stroke="#e3b341"/>
+  <text x="84" y="221" class="sans text">private key (PEM)</text>
+
+  <rect x="36" y="262" width="202" height="58" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="48" y="283" class="mono var">JWT_ACTIVE_KID</text>
+  <text x="48" y="305" class="mono" font-size="12" fill="#e3b341">key-2026-10-22</text>
+  <path d="M232,291 C 244,291 244,206 228,206" fill="none" stroke="#e3b341" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arrow-amber)"/>
+
+  <text x="40" y="350" class="sans sub">Private keys never leave</text>
+  <text x="40" y="364" class="sans sub">this service.</text>
+
+  <!-- ===== KeyRotationManager ===== -->
+  <line x1="250" y1="200" x2="276" y2="200" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <rect x="280" y="138" width="170" height="124" rx="8" fill="#21262d" stroke="#d2a8ff" stroke-opacity="0.8"/>
+  <text x="365" y="162" class="sans box" text-anchor="middle">KeyRotationManager</text>
+  <text x="365" y="178" class="sans sub" text-anchor="middle">actor</text>
+  <text x="296" y="204" class="sans text">loaded at startup</text>
+  <text x="296" y="224" class="sans text">signs with the active key</text>
+  <text x="296" y="244" class="sans text">publishes public halves</text>
+
+  <!-- Arrows out -->
+  <line x1="450" y1="170" x2="526" y2="110" stroke="#e3b341" stroke-width="1.8" marker-end="url(#arrow-amber)"/>
+  <text x="468" y="106" class="mono label" fill="#e3b341" text-anchor="middle">signToken()</text>
+  <line x1="450" y1="232" x2="526" y2="290" stroke="#58a6ff" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
+  <text x="462" y="304" class="mono label" fill="#58a6ff" text-anchor="middle">currentJWKS()</text>
+
+  <!-- ===== Access token ===== -->
+  <rect x="530" y="24" width="206" height="158" rx="8" fill="#21262d" stroke="#30363d"/>
+  <text x="546" y="48" class="sans box">Access token</text>
+  <text x="546" y="70" class="sans sub">header</text>
+  <text x="546" y="88" class="mono code">{ "alg": "ES256",</text>
+  <text x="560" y="104" class="mono code">"kid": "<tspan fill="#e3b341">key-2026-10-22</tspan>" }</text>
+  <line x1="546" y1="116" x2="720" y2="116" stroke="#30363d"/>
+  <text x="546" y="136" class="sans sub">payload</text>
+  <text x="600" y="136" class="sans text">userId, role, exp</text>
+  <text x="546" y="164" class="sans sub">signature</text>
+  <use href="#key" x="606" y="154" width="18" height="12" stroke="#e3b341"/>
+  <text x="630" y="164" class="mono kid" fill="#e3b341" style="fill:#e3b341">key-2026-10-22</text>
+
+  <!-- ===== JWKS ===== -->
+  <rect x="530" y="200" width="206" height="186" rx="8" fill="#21262d" stroke="#30363d"/>
+  <text x="546" y="224" class="mono" font-size="12" font-weight="600" fill="#e6edf3">/.well-known/jwks.json</text>
+
+  <rect x="542" y="236" width="182" height="46" rx="6" fill="#58a6ff" fill-opacity="0.08" stroke="#58a6ff" stroke-opacity="0.6"/>
+  <text x="554" y="254" class="mono kid">kid: key-2026-09-13</text>
+  <use href="#key" x="554" y="263" width="18" height="12" stroke="#58a6ff"/>
+  <text x="578" y="274" class="sans text">public: x, y</text>
+
+  <rect x="542" y="290" width="182" height="46" rx="6" fill="#58a6ff" fill-opacity="0.08" stroke="#58a6ff" stroke-opacity="0.6"/>
+  <text x="554" y="308" class="mono kid">kid: key-2026-10-22</text>
+  <use href="#key" x="554" y="317" width="18" height="12" stroke="#58a6ff"/>
+  <text x="578" y="328" class="sans text">public: x, y</text>
+
+  <text x="546" y="360" class="sans sub">No private part ("d"): safe to</text>
+  <text x="546" y="373" class="sans sub">serve without authentication.</text>
+</svg>

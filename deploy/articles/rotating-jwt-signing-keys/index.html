@@ -1,0 +1,323 @@
+<html lang="en-US">
+	<head>
+		<meta charset="utf-8"/>
+		<meta content="width=device-width, initial-scale=1" name="viewport"/>
+		<title>
+			Rotating JWT Signing Keys
+		</title>
+		<link href="/static/style.css" rel="stylesheet"/>
+	</head>
+	<body>
+		<header>
+			<nav>
+				<a class="site-title" href="/">Atelier Swift</a>
+				<div class="nav-links">
+					<a href="/articles/">Articles</a>
+				</div>
+			</nav>
+		</header>
+		<main>
+			<article>
+				<h1>
+					Rotating JWT Signing Keys
+				</h1>
+				<ul class="tags">
+					<li>
+						<a href="/articles/tag/swift-server/">swift-server</a>
+					</li>
+					<li>
+						<a href="/articles/tag/vapor/">vapor</a>
+					</li>
+					<li>
+						<a href="/articles/tag/auth/">auth</a>
+					</li>
+					<li>
+						<a href="/articles/tag/jwt/">jwt</a>
+					</li>
+				</ul>
+				<p>Every access token in this project is a JWT that AuthService signs and the other services verify. <a href="/articles/keeping-users-signed-in/">The previous article</a> covered how those tokens are refreshed. This one is about the key that signs them: why it has to be replaceable, and how AuthService replaces it without signing anyone out and without redeploying the services that verify tokens.</p>
+<h2>Why rotate signing keys at all</h2>
+<p>Whoever holds the signing key can create a valid access token for any user, with any role, <code>admin</code> included. Every service accepts that token, because it checks only the signature. So the signing key is the most valuable secret in the system, and there are good reasons to make sure it can be changed:</p>
+<ul>
+<li><strong>It might leak.</strong> Keys end up in environment variables, CI logs, backups, screenshots and old laptops. If one leaks, it has to be replaced at once, and that is the worst moment to find out the system can’t do it without an outage.</li>
+<li><strong>Exposure grows with time.</strong> The longer a key is in use, the more places it has been copied to and the more tokens it has signed. Security guidance therefore limits how long a key may be used, its <em>cryptoperiod</em>. See the <a href="https://cheatsheetseries.owasp.org/cheatsheets/Key_Management_Cheat_Sheet.html">OWASP Key Management Cheat Sheet</a> and <a href="https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final">NIST SP 800-57 Part 1</a>.</li>
+<li><strong>A procedure that is never run doesn’t work.</strong> If keys only change during an incident, the change happens for the first time under pressure. Rotating on a schedule keeps the process tested.</li>
+<li><strong>Algorithms change.</strong> A key identifier lets an old key and a new one, even of a different type, be valid at the same time while everything moves over.</li>
+</ul>
+<p>The hard part isn’t generating a new key. It’s that tokens signed with the old key are still in use, and other services need the new public key before they see the first token signed with it. If the key is simply swapped, tokens already in use stop verifying at that moment, and each verifying service rejects the new tokens until it is redeployed with the new key.</p>
+<h2>From one shared secret to a keyring</h2>
+<p>The project got there in three steps:</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/key-evolution.svg" alt="Three stages of signing in this project: one shared HS256 secret in every service, then one ES256 key pair copied by hand, then an ES256 keyring with a JWKS endpoint." /></p>
+<ol>
+<li><strong>One shared secret (HS256).</strong> The first version signed tokens with <a href="https://datatracker.ietf.org/doc/html/rfc7518#section-3.2">HMAC-SHA256</a> and one secret: <code>app.jwt.signers.use(.hs256(key: jwtSecret))</code>. With HMAC, verifying needs the same secret as signing, so every service that checked tokens could also create them. A leak in any service meant a leak everywhere.</li>
+<li><strong>One key pair (ES256).</strong> The secret was replaced with an <a href="https://datatracker.ietf.org/doc/html/rfc7518#section-3.4">ECDSA P-256 key pair</a>. Only AuthService has the private key and can sign. The other services hold only the public key, so they can verify but not sign. But the public key was copied into each service’s configuration by hand, so changing the key still meant updating every service at once.</li>
+<li><strong>A keyring with key ids, published as a JWKS.</strong> AuthService now holds several private keys, each with a key id (<code>kid</code>). It signs with one of them and publishes all the public keys at one URL. The other services fetch the keys from there, so a new key reaches them without a redeploy.</li>
+</ol>
+<p>The rest of this article is about step 3.</p>
+<h2>Key ids: which key signed this token?</h2>
+<p>A JWT starts with a header, and the header can name the key that signed it with the <a href="https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.4"><code>kid</code> parameter</a>. Decoded, the header of an access token from AuthService looks like this:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span> <span class="token property">"alg"</span><span class="token operator">:</span> <span class="token string">"ES256"</span><span class="token punctuation">,</span> <span class="token property">"kid"</span><span class="token operator">:</span> <span class="token string">"key-2026-10-22"</span><span class="token punctuation">,</span> <span class="token property">"typ"</span><span class="token operator">:</span> <span class="token string">"JWT"</span> <span class="token punctuation">}</span>
+</code></pre>
+<p>When a token arrives, the verifier reads the <code>kid</code>, picks the public key with that id and checks the signature with it. Because each token says which key signed it, any number of keys can be valid at the same time. That is what makes a smooth handover possible.</p>
+<p>The key ids here are just the date the key was created. A <code>kid</code> can be any string, but a date shows at a glance how old a key is.</p>
+<h2>The keyring</h2>
+<p>The keys reach AuthService through two environment variables:</p>
+<ul>
+<li><code>JWT_KEYRING</code> holds all the private keys.</li>
+<li><code>JWT_ACTIVE_KID</code> says which of them signs new tokens.</li>
+</ul>
+<pre><code class="language-bash"><span class="token comment"># JWT_KEYRING, before base64 encoding:</span>
+<span class="token punctuation">[</span>
+  <span class="token punctuation">{</span> <span class="token string">"kid"</span><span class="token builtin class-name">:</span> <span class="token string">"key-2026-09-13"</span>, <span class="token string">"privateKeyB64"</span><span class="token builtin class-name">:</span> <span class="token string">"&lt;base64 of the PEM file>"</span> <span class="token punctuation">}</span>,
+  <span class="token punctuation">{</span> <span class="token string">"kid"</span><span class="token builtin class-name">:</span> <span class="token string">"key-2026-10-22"</span>, <span class="token string">"privateKeyB64"</span><span class="token builtin class-name">:</span> <span class="token string">"&lt;base64 of the PEM file>"</span> <span class="token punctuation">}</span>
+<span class="token punctuation">]</span>
+
+<span class="token assign-left variable">JWT_ACTIVE_KID</span><span class="token operator">=</span>key-2026-10-22
+</code></pre>
+<p>The whole JSON array is base64-encoded into a single line, and each PEM key inside it is base64-encoded once more. A PEM file contains line breaks, and those don’t survive environment variables and JSON strings reliably. A one-line base64 string does.</p>
+<p>A new key is one <a href="https://docs.openssl.org/master/man1/openssl-ecparam/">OpenSSL command</a> away. <code>prime256v1</code> is OpenSSL’s name for the P-256 curve that ES256 uses:</p>
+<pre><code class="language-bash">openssl ecparam <span class="token parameter variable">-genkey</span> <span class="token parameter variable">-name</span> prime256v1 <span class="token parameter variable">-noout</span> <span class="token parameter variable">-out</span> key-2026-10-22.pem
+base64 <span class="token operator">&lt;</span> key-2026-10-22.pem <span class="token operator">|</span> <span class="token function">tr</span> <span class="token parameter variable">-d</span> <span class="token string">'\n'</span>     <span class="token comment"># → privateKeyB64</span>
+</code></pre>
+<p>Here is how the keyring, the signing and the published keys fit together:</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/keyring-anatomy.svg" alt="The keyring holds two private keys. The active one signs new tokens and its kid goes into the token header. The JWKS endpoint publishes only the public halves of both keys." /></p>
+<h3>Failing at startup, not at the first login</h3>
+<p>The keyring is parsed in an extension on Vapor’s <code>Environment</code>, in <code>ELabModels</code>. It undoes the two layers of base64 and returns the key ids with their PEM strings:</p>
+<pre><code class="language-swift"><span class="token keyword">extension</span> <span class="token class-name">Environment</span> <span class="token punctuation">{</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">let</span> <span class="token constant">JWTKEYRING</span>   <span class="token operator">=</span> <span class="token keyword">Self</span><span class="token punctuation">.</span><span class="token keyword">get</span><span class="token punctuation">(</span><span class="token string-literal"><span class="token string">"JWT_KEYRING"</span></span><span class="token punctuation">)</span> <span class="token operator">??</span> <span class="token string-literal"><span class="token string">""</span></span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">let</span> <span class="token constant">JWTACTIVEKID</span> <span class="token operator">=</span> <span class="token keyword">Self</span><span class="token punctuation">.</span><span class="token keyword">get</span><span class="token punctuation">(</span><span class="token string-literal"><span class="token string">"JWT_ACTIVE_KID"</span></span><span class="token punctuation">)</span> <span class="token operator">??</span> <span class="token string-literal"><span class="token string">""</span></span>
+
+    <span class="token comment">/// Parsed signing keyring (kid + private-key PEM). AuthService only.</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">func</span> <span class="token function-definition function">jwtKeyEntries</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token punctuation">[</span><span class="token class-name">JWTKeyEntry</span><span class="token punctuation">]</span> <span class="token punctuation">{</span>
+        <span class="token keyword">guard</span> <span class="token keyword">let</span> data <span class="token operator">=</span> <span class="token class-name">Data</span><span class="token punctuation">(</span>base64Encoded<span class="token punctuation">:</span> <span class="token constant">JWTKEYRING</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+              <span class="token keyword">let</span> raw <span class="token operator">=</span> <span class="token keyword">try</span><span class="token operator">?</span> <span class="token class-name">JSONDecoder</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">decode</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token class-name">JWTKeyEntryRaw</span><span class="token punctuation">]</span><span class="token punctuation">.</span><span class="token keyword">self</span><span class="token punctuation">,</span> from<span class="token punctuation">:</span> data<span class="token punctuation">)</span> <span class="token keyword">else</span> <span class="token punctuation">{</span>
+            <span class="token keyword">return</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+        <span class="token punctuation">}</span>
+        <span class="token keyword">return</span> raw<span class="token punctuation">.</span>compactMap <span class="token punctuation">{</span> entry <span class="token keyword">in</span>
+            <span class="token keyword">guard</span> <span class="token keyword">let</span> pemData <span class="token operator">=</span> <span class="token class-name">Data</span><span class="token punctuation">(</span>base64Encoded<span class="token punctuation">:</span> entry<span class="token punctuation">.</span>privateKeyB64<span class="token punctuation">)</span><span class="token punctuation">,</span>
+                  <span class="token keyword">let</span> pem <span class="token operator">=</span> <span class="token class-name">String</span><span class="token punctuation">(</span>data<span class="token punctuation">:</span> pemData<span class="token punctuation">,</span> encoding<span class="token punctuation">:</span> <span class="token punctuation">.</span>utf8<span class="token punctuation">)</span> <span class="token keyword">else</span> <span class="token punctuation">{</span> <span class="token keyword">return</span> <span class="token nil constant">nil</span> <span class="token punctuation">}</span>
+            <span class="token keyword">return</span> <span class="token class-name">JWTKeyEntry</span><span class="token punctuation">(</span>kid<span class="token punctuation">:</span> entry<span class="token punctuation">.</span>kid<span class="token punctuation">,</span> privatePEM<span class="token punctuation">:</span> pem<span class="token punctuation">)</span>
+        <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+
+<span class="token comment">/// One entry of the signing keyring: a key id and its private-key PEM.</span>
+<span class="token keyword">public</span> <span class="token keyword">struct</span> <span class="token class-name">JWTKeyEntry</span><span class="token punctuation">:</span> <span class="token class-name">Sendable</span> <span class="token punctuation">{</span>
+    <span class="token keyword">public</span> <span class="token keyword">let</span> kid<span class="token punctuation">:</span> <span class="token class-name">String</span>
+    <span class="token keyword">public</span> <span class="token keyword">let</span> privatePEM<span class="token punctuation">:</span> <span class="token class-name">String</span>
+<span class="token punctuation">}</span>
+
+<span class="token comment">/// Wire shape of a keyring entry as stored in `JWT_KEYRING`.</span>
+<span class="token keyword">private</span> <span class="token keyword">struct</span> <span class="token class-name">JWTKeyEntryRaw</span><span class="token punctuation">:</span> <span class="token class-name">Decodable</span> <span class="token punctuation">{</span>
+    <span class="token keyword">let</span> kid<span class="token punctuation">:</span> <span class="token class-name">String</span>
+    <span class="token keyword">let</span> privateKeyB64<span class="token punctuation">:</span> <span class="token class-name">String</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>There are two types on purpose. <code>JWTKeyEntryRaw</code> is the shape in the environment variable and stays <code>private</code> to this file. <code>JWTKeyEntry</code> is what the rest of the code works with: the PEM is already decoded, so no other code has to know about base64. A missing variable, broken base64 or invalid JSON all end the same way, in an empty array.</p>
+<p><code>configure.swift</code> calls it when the service starts. If the result is empty, AuthService refuses to start:</p>
+<pre><code class="language-swift"><span class="token keyword">let</span> keyEntries <span class="token operator">=</span> <span class="token class-name">Environment</span><span class="token punctuation">.</span><span class="token function">jwtKeyEntries</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+<span class="token keyword">let</span> activeKid <span class="token operator">=</span> <span class="token class-name">Environment</span><span class="token punctuation">.</span><span class="token constant">JWTACTIVEKID</span>
+<span class="token keyword">guard</span> <span class="token operator">!</span>keyEntries<span class="token punctuation">.</span>isEmpty <span class="token keyword">else</span> <span class="token punctuation">{</span>
+    <span class="token keyword">throw</span> <span class="token class-name">Abort</span><span class="token punctuation">(</span><span class="token punctuation">.</span>internalServerError<span class="token punctuation">,</span> reason<span class="token punctuation">:</span> <span class="token string-literal"><span class="token string">"JWT_KEYRING is empty or invalid"</span></span><span class="token punctuation">)</span>
+<span class="token punctuation">}</span>
+app<span class="token punctuation">.</span>keyRotationManager <span class="token operator">=</span> <span class="token keyword">try</span> <span class="token keyword">await</span> <span class="token class-name">KeyRotationManager</span><span class="token punctuation">(</span>entries<span class="token punctuation">:</span> keyEntries<span class="token punctuation">,</span>
+                                                      activeKid<span class="token punctuation">:</span> activeKid<span class="token punctuation">)</span>
+</code></pre>
+<p><code>KeyRotationManager</code> adds one more check: the active <code>kid</code> has to be one of the keys in the ring. A typo in <code>JWT_ACTIVE_KID</code> therefore stops the deployment straight away, instead of starting a service that fails on every login.</p>
+<h2>KeyRotationManager</h2>
+<p><code>KeyRotationManager</code> lives in the shared <code>ELabModels</code> package, but only AuthService creates one, because it is the only service that holds private keys. It is adapted from Vapor’s official <a href="https://github.com/vapor/examples/tree/main/jwt-key-rotation">jwt-key-rotation example</a> and is built on <code>JWTKeyCollection</code> from <a href="https://github.com/vapor/jwt-kit">jwt-kit</a>, the library behind <a href="https://docs.vapor.codes/security/jwt/">Vapor’s JWT support</a>. Shortened:</p>
+<pre><code class="language-swift"><span class="token keyword">public</span> <span class="token keyword">actor</span> <span class="token class-name">KeyRotationManager</span> <span class="token punctuation">{</span>
+    <span class="token keyword">private</span> <span class="token keyword">let</span> keyCollection<span class="token punctuation">:</span> <span class="token class-name">JWTKeyCollection</span>
+    <span class="token keyword">private</span> <span class="token keyword">var</span> currentKeyId<span class="token punctuation">:</span> <span class="token class-name">JWKIdentifier</span>
+    <span class="token keyword">private</span> <span class="token keyword">var</span> publicKeys<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">JWKIdentifier</span><span class="token punctuation">:</span> <span class="token class-name">ES256PublicKey</span><span class="token punctuation">]</span>
+
+    <span class="token keyword">public</span> <span class="token keyword">init</span><span class="token punctuation">(</span>entries<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">JWTKeyEntry</span><span class="token punctuation">]</span><span class="token punctuation">,</span> activeKid<span class="token punctuation">:</span> <span class="token class-name">String</span><span class="token punctuation">)</span> <span class="token keyword">async</span> <span class="token keyword">throws</span> <span class="token punctuation">{</span>
+        <span class="token keyword">guard</span> entries<span class="token punctuation">.</span><span class="token function">contains</span><span class="token punctuation">(</span><span class="token keyword">where</span><span class="token punctuation">:</span> <span class="token punctuation">{</span> <span class="token short-argument">$0</span><span class="token punctuation">.</span>kid <span class="token operator">==</span> activeKid <span class="token punctuation">}</span><span class="token punctuation">)</span> <span class="token keyword">else</span> <span class="token punctuation">{</span>
+            <span class="token keyword">throw</span> <span class="token class-name">Abort</span><span class="token punctuation">(</span><span class="token punctuation">.</span>internalServerError<span class="token punctuation">,</span>
+                        reason<span class="token punctuation">:</span> <span class="token string-literal"><span class="token string">"JWT_ACTIVE_KID '</span><span class="token interpolation-punctuation punctuation">\(</span><span class="token interpolation">activeKid</span><span class="token interpolation-punctuation punctuation">)</span><span class="token string">' is not present in JWT_KEYRING"</span></span><span class="token punctuation">)</span>
+        <span class="token punctuation">}</span>
+        <span class="token keyword">let</span> collection <span class="token operator">=</span> <span class="token class-name">JWTKeyCollection</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+        <span class="token keyword">var</span> pubs<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">JWKIdentifier</span><span class="token punctuation">:</span> <span class="token class-name">ES256PublicKey</span><span class="token punctuation">]</span> <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">:</span><span class="token punctuation">]</span>
+        <span class="token keyword">for</span> entry <span class="token keyword">in</span> entries <span class="token punctuation">{</span>
+            <span class="token keyword">let</span> key <span class="token operator">=</span> <span class="token keyword">try</span> <span class="token class-name">ES256PrivateKey</span><span class="token punctuation">(</span>pem<span class="token punctuation">:</span> entry<span class="token punctuation">.</span>privatePEM<span class="token punctuation">)</span>
+            <span class="token keyword">let</span> kid <span class="token operator">=</span> <span class="token class-name">JWKIdentifier</span><span class="token punctuation">(</span>string<span class="token punctuation">:</span> entry<span class="token punctuation">.</span>kid<span class="token punctuation">)</span>
+            <span class="token keyword">await</span> collection<span class="token punctuation">.</span><span class="token function">add</span><span class="token punctuation">(</span>ecdsa<span class="token punctuation">:</span> key<span class="token punctuation">,</span> kid<span class="token punctuation">:</span> kid<span class="token punctuation">)</span>
+            pubs<span class="token punctuation">[</span>kid<span class="token punctuation">]</span> <span class="token operator">=</span> key<span class="token punctuation">.</span>publicKey
+        <span class="token punctuation">}</span>
+        <span class="token keyword">self</span><span class="token punctuation">.</span>keyCollection <span class="token operator">=</span> collection
+        <span class="token keyword">self</span><span class="token punctuation">.</span>publicKeys <span class="token operator">=</span> pubs
+        <span class="token keyword">self</span><span class="token punctuation">.</span>currentKeyId <span class="token operator">=</span> <span class="token class-name">JWKIdentifier</span><span class="token punctuation">(</span>string<span class="token punctuation">:</span> activeKid<span class="token punctuation">)</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">/// Signs with the active key and writes its `kid` into the header.</span>
+    <span class="token keyword">public</span> <span class="token keyword">func</span> <span class="token function-definition function">signToken</span><span class="token punctuation">(</span><span class="token omit keyword">_</span> payload<span class="token punctuation">:</span> <span class="token keyword">some</span> <span class="token class-name">JWTPayload</span><span class="token punctuation">)</span> <span class="token keyword">async</span> <span class="token keyword">throws</span> <span class="token operator">-></span> <span class="token class-name">String</span> <span class="token punctuation">{</span>
+        <span class="token keyword">try</span> <span class="token keyword">await</span> keyCollection<span class="token punctuation">.</span><span class="token function">sign</span><span class="token punctuation">(</span>payload<span class="token punctuation">,</span> kid<span class="token punctuation">:</span> currentKeyId<span class="token punctuation">)</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">/// Starts using a new key; the previous ones keep verifying.</span>
+    <span class="token keyword">public</span> <span class="token keyword">func</span> <span class="token function-definition function">rotateKey</span><span class="token punctuation">(</span>newKey<span class="token punctuation">:</span> <span class="token class-name">ES256PrivateKey</span><span class="token punctuation">,</span> newKeyId<span class="token punctuation">:</span> <span class="token class-name">JWKIdentifier</span><span class="token punctuation">)</span> <span class="token keyword">async</span> <span class="token punctuation">{</span>
+        currentKeyId <span class="token operator">=</span> newKeyId
+        publicKeys<span class="token punctuation">[</span>newKeyId<span class="token punctuation">]</span> <span class="token operator">=</span> newKey<span class="token punctuation">.</span>publicKey
+        <span class="token keyword">await</span> keyCollection<span class="token punctuation">.</span><span class="token function">add</span><span class="token punctuation">(</span>ecdsa<span class="token punctuation">:</span> newKey<span class="token punctuation">,</span> kid<span class="token punctuation">:</span> newKeyId<span class="token punctuation">)</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">/// Drops every key except the active one, once old tokens have expired.</span>
+    <span class="token keyword">public</span> <span class="token keyword">func</span> <span class="token function-definition function">removeOldKeys</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token keyword">async</span> <span class="token punctuation">{</span>
+        <span class="token omit keyword">_</span> <span class="token operator">=</span> <span class="token keyword">await</span> keyCollection<span class="token punctuation">.</span><span class="token function">removeAll</span><span class="token punctuation">(</span>except<span class="token punctuation">:</span> <span class="token punctuation">[</span>currentKeyId<span class="token punctuation">]</span><span class="token punctuation">)</span>
+        publicKeys <span class="token operator">=</span> publicKeys<span class="token punctuation">.</span>filter <span class="token punctuation">{</span> <span class="token short-argument">$0</span><span class="token punctuation">.</span>key <span class="token operator">==</span> currentKeyId <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">/// The public halves of all keys, for the JWKS endpoint.</span>
+    <span class="token keyword">public</span> <span class="token keyword">func</span> <span class="token function-definition function">currentJWKS</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token constant">JWKS</span> <span class="token punctuation">{</span>
+        <span class="token function">JWKS</span><span class="token punctuation">(</span>keys<span class="token punctuation">:</span> publicKeys<span class="token punctuation">.</span>compactMap <span class="token punctuation">{</span> kid<span class="token punctuation">,</span> key <span class="token keyword">in</span>
+            key<span class="token punctuation">.</span>parameters<span class="token punctuation">.</span>map <span class="token punctuation">{</span>
+                <span class="token constant">JWK</span><span class="token punctuation">.</span><span class="token function">ecdsa</span><span class="token punctuation">(</span><span class="token punctuation">.</span>es256<span class="token punctuation">,</span> identifier<span class="token punctuation">:</span> kid<span class="token punctuation">,</span> x<span class="token punctuation">:</span> <span class="token short-argument">$0</span><span class="token punctuation">.</span>x<span class="token punctuation">,</span> y<span class="token punctuation">:</span> <span class="token short-argument">$0</span><span class="token punctuation">.</span>y<span class="token punctuation">,</span> curve<span class="token punctuation">:</span> <span class="token punctuation">.</span>p256<span class="token punctuation">)</span>
+            <span class="token punctuation">}</span>
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p><code>generateToken</code>, which you saw in the earlier articles, just calls <code>signToken</code>. It never needs to know which key is active.</p>
+<p>It is an <a href="https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Actors">actor</a> because its state can change while requests are using it. <code>rotateKey</code> changes the active key, while many logins may be signing tokens at the same moment. The actor runs these calls one at a time, so a token is never signed while the switch is only half done.</p>
+<p>AuthService also verifies tokens itself, for example in <code>logoutAll</code> behind <code>JWTMiddleware</code>. For that, <code>configure.swift</code> adds every key in the ring to Vapor’s own key collection as well (<code>app.jwt.keys.add(ecdsa:kid:)</code>). <code>req.jwt.verify</code> then picks the right key by <code>kid</code>, just as the other services do.</p>
+<h2>Publishing the public keys: JWKS</h2>
+<p>A <a href="https://datatracker.ietf.org/doc/html/rfc7517#section-5">JSON Web Key Set</a> (JWKS) is a standard JSON format for a list of public keys. AuthService serves its keys at <code>/.well-known/jwks.json</code>:</p>
+<pre><code class="language-swift">app<span class="token punctuation">.</span><span class="token keyword">get</span><span class="token punctuation">(</span><span class="token string-literal"><span class="token string">".well-known"</span></span><span class="token punctuation">,</span> <span class="token string-literal"><span class="token string">"jwks.json"</span></span><span class="token punctuation">)</span> <span class="token punctuation">{</span> req <span class="token operator">-></span> <span class="token class-name">Response</span> <span class="token keyword">in</span>
+    <span class="token keyword">guard</span> <span class="token keyword">let</span> manager <span class="token operator">=</span> req<span class="token punctuation">.</span>application<span class="token punctuation">.</span>keyRotationManager <span class="token keyword">else</span> <span class="token punctuation">{</span>
+        <span class="token keyword">throw</span> <span class="token class-name">Abort</span><span class="token punctuation">(</span><span class="token punctuation">.</span>internalServerError<span class="token punctuation">,</span> reason<span class="token punctuation">:</span> <span class="token string-literal"><span class="token string">"KeyRotationManager not configured"</span></span><span class="token punctuation">)</span>
+    <span class="token punctuation">}</span>
+    <span class="token keyword">let</span> jwks <span class="token operator">=</span> <span class="token keyword">await</span> manager<span class="token punctuation">.</span><span class="token function">currentJWKS</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+    <span class="token keyword">let</span> data <span class="token operator">=</span> <span class="token keyword">try</span> <span class="token class-name">JSONEncoder</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">encode</span><span class="token punctuation">(</span>jwks<span class="token punctuation">)</span>
+    <span class="token keyword">var</span> headers <span class="token operator">=</span> <span class="token class-name">HTTPHeaders</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+    headers<span class="token punctuation">.</span>contentType <span class="token operator">=</span> <span class="token punctuation">.</span>json
+    <span class="token keyword">return</span> <span class="token class-name">Response</span><span class="token punctuation">(</span>status<span class="token punctuation">:</span> <span class="token punctuation">.</span>ok<span class="token punctuation">,</span> headers<span class="token punctuation">:</span> headers<span class="token punctuation">,</span>
+                    body<span class="token punctuation">:</span> <span class="token punctuation">.</span><span class="token keyword">init</span><span class="token punctuation">(</span>string<span class="token punctuation">:</span> <span class="token class-name">String</span><span class="token punctuation">(</span>decoding<span class="token punctuation">:</span> data<span class="token punctuation">,</span> <span class="token keyword">as</span><span class="token punctuation">:</span> UTF8<span class="token punctuation">.</span><span class="token keyword">self</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>During a rotation, the response contains two keys:</p>
+<pre><code class="language-json"><span class="token punctuation">{</span>
+  <span class="token property">"keys"</span><span class="token operator">:</span> <span class="token punctuation">[</span>
+    <span class="token punctuation">{</span> <span class="token property">"kty"</span><span class="token operator">:</span> <span class="token string">"EC"</span><span class="token punctuation">,</span> <span class="token property">"crv"</span><span class="token operator">:</span> <span class="token string">"P-256"</span><span class="token punctuation">,</span> <span class="token property">"alg"</span><span class="token operator">:</span> <span class="token string">"ES256"</span><span class="token punctuation">,</span> <span class="token property">"kid"</span><span class="token operator">:</span> <span class="token string">"key-2026-09-13"</span><span class="token punctuation">,</span> <span class="token property">"x"</span><span class="token operator">:</span> <span class="token string">"…"</span><span class="token punctuation">,</span> <span class="token property">"y"</span><span class="token operator">:</span> <span class="token string">"…"</span> <span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token punctuation">{</span> <span class="token property">"kty"</span><span class="token operator">:</span> <span class="token string">"EC"</span><span class="token punctuation">,</span> <span class="token property">"crv"</span><span class="token operator">:</span> <span class="token string">"P-256"</span><span class="token punctuation">,</span> <span class="token property">"alg"</span><span class="token operator">:</span> <span class="token string">"ES256"</span><span class="token punctuation">,</span> <span class="token property">"kid"</span><span class="token operator">:</span> <span class="token string">"key-2026-10-22"</span><span class="token punctuation">,</span> <span class="token property">"x"</span><span class="token operator">:</span> <span class="token string">"…"</span><span class="token punctuation">,</span> <span class="token property">"y"</span><span class="token operator">:</span> <span class="token string">"…"</span> <span class="token punctuation">}</span>
+  <span class="token punctuation">]</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>An EC public key is a point on the curve, given by its <code>x</code> and <code>y</code> coordinates. A private key would also have a <code>d</code> field. It is never in this response, so the endpoint is safe to serve without authentication. The big identity providers work the same way. See <a href="https://appleid.apple.com/auth/keys">Apple’s keys for Sign in with Apple</a> and <a href="https://www.googleapis.com/oauth2/v3/certs">Google’s</a>. <a href="https://openid.net/specs/openid-connect-discovery-1_0.html">OpenID Connect Discovery</a> advertises this URL as <code>jwks_uri</code>, and the <code>/.well-known/</code> prefix follows the convention from <a href="https://datatracker.ietf.org/doc/html/rfc8615">RFC 8615</a>.</p>
+<p>In this project the endpoint isn’t routed through the Nginx gateway, which forwards only <code>/api/…</code> paths. The other services fetch it from AuthService directly, inside the private network.</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/jwks-network.svg" alt="The iOS app reaches the services only through the Nginx gateway, which has routes for /api/ paths but none for /.well-known/jwks.json. Inside the private network, WorkoutEngine fetches the JWKS from AuthService directly." /></p>
+<h2>How the other services pick up a new key</h2>
+<p>WorkoutEngine verifies tokens with <code>JWKSVerifier</code>, an actor from <code>ELabModels</code> that holds only public keys. It caches the JWKS and fetches it again when a request arrives after the cached copy is more than five minutes old. That alone would pick up a new key within a few minutes. But it also refetches straight away when a token names a <code>kid</code> it doesn’t know yet:</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/unknown-kid.svg" alt="Sequence diagram: a token signed with a new key reaches WorkoutEngine, whose cache doesn’t know the kid yet. It fetches the JWKS from AuthService once, finds the key and accepts the token." /></p>
+<pre><code class="language-swift"><span class="token keyword">public</span> <span class="token keyword">func</span> <span class="token function-definition function">payload</span><span class="token punctuation">(</span><span class="token keyword">for</span> token<span class="token punctuation">:</span> <span class="token class-name">String</span><span class="token punctuation">)</span> <span class="token keyword">async</span> <span class="token operator">-></span> <span class="token class-name">UserPayload</span><span class="token operator">?</span> <span class="token punctuation">{</span>
+    <span class="token keyword">await</span> <span class="token function">refreshIfStale</span><span class="token punctuation">(</span><span class="token punctuation">)</span>                                  <span class="token comment">// cache older than 5 minutes?</span>
+
+    <span class="token keyword">if</span> trustable<span class="token punctuation">,</span> <span class="token keyword">let</span> payload <span class="token operator">=</span> <span class="token keyword">try</span><span class="token operator">?</span> <span class="token keyword">await</span> keys<span class="token operator">?</span><span class="token punctuation">.</span><span class="token function">verify</span><span class="token punctuation">(</span>token<span class="token punctuation">,</span> <span class="token keyword">as</span><span class="token punctuation">:</span> <span class="token class-name">UserPayload</span><span class="token punctuation">.</span><span class="token keyword">self</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> payload
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// Unknown kid / empty or expired cache → refresh (rate-limited) and retry once.</span>
+    <span class="token keyword">guard</span> <span class="token keyword">await</span> <span class="token function">refresh</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token keyword">else</span> <span class="token punctuation">{</span> <span class="token keyword">return</span> <span class="token nil constant">nil</span> <span class="token punctuation">}</span>
+    <span class="token keyword">return</span> <span class="token keyword">try</span><span class="token operator">?</span> <span class="token keyword">await</span> keys<span class="token operator">?</span><span class="token punctuation">.</span><span class="token function">verify</span><span class="token punctuation">(</span>token<span class="token punctuation">,</span> <span class="token keyword">as</span><span class="token punctuation">:</span> <span class="token class-name">UserPayload</span><span class="token punctuation">.</span><span class="token keyword">self</span><span class="token punctuation">)</span>
+<span class="token punctuation">}</span>
+</code></pre>
+<p>The refetch is rate-limited to one attempt every 15 seconds. Otherwise a stream of tokens with made-up <code>kid</code>s would turn into a stream of requests to AuthService. What the verifier does when AuthService can’t be reached is covered in “When things go wrong” below.</p>
+<h2>Rotating a key, step by step</h2>
+<p>Put together, a planned rotation has four steps. The old key here is <code>key-2026-09-13</code> and the new one is <code>key-2026-10-22</code>:</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/rotation-timeline.svg" alt="Timeline of a key rotation in four phases: add the new key, switch signing to it, wait for old tokens to expire, remove the old key." /></p>
+<ol>
+<li><strong>Add the new key, keep signing with the old one.</strong> Add <code>key-2026-10-22</code> to <code>JWT_KEYRING</code>, leave <code>JWT_ACTIVE_KID</code> unchanged, and restart AuthService. The JWKS now lists both keys, and every verifier picks up the new public key the next time it refreshes its cache.</li>
+<li><strong>Switch.</strong> Set <code>JWT_ACTIVE_KID=key-2026-10-22</code> and restart again. New tokens are signed with the new key. Tokens signed with the old key still verify, because the old key is still in the ring.</li>
+<li><strong>Wait for old tokens to expire.</strong> Access tokens live for 15 minutes, so 15 minutes after the switch no valid token signed with the old key is left. Waiting a bit longer does no harm.</li>
+<li><strong>Remove the old key.</strong> Delete <code>key-2026-09-13</code> from <code>JWT_KEYRING</code> and restart. The JWKS lists only the new key, the verifiers drop the old one at their next cache refresh, and the old private key can be destroyed.</li>
+</ol>
+<p>Step 1 isn’t strictly needed, because verifiers refetch on an unknown <code>kid</code> anyway. But it means the first token signed with the new key never has to wait for that refetch.</p>
+<p>The users don’t notice any of this. Refresh tokens are random strings stored in the database, not signed JWTs, so rotating the signing key doesn’t affect them. Nobody is signed out.</p>
+<h3>When a key has leaked</h3>
+<p>Private keys rarely get stolen by breaking the cryptography. They leak through the places they are kept:</p>
+<ul>
+<li><strong>Source code and repositories.</strong> A key committed “just for testing” stays in the git history after it is deleted from the files (<a href="https://cwe.mitre.org/data/definitions/798.html">CWE-798</a>). GitHub runs <a href="https://docs.github.com/en/code-security/secret-scanning/introduction/about-secret-scanning">secret scanning</a> on pushes for exactly this reason.</li>
+<li><strong>Logs.</strong> A debug line that prints the configuration prints the keyring with it (<a href="https://cwe.mitre.org/data/definitions/532.html">CWE-532</a>).</li>
+<li><strong>Environment variables.</strong> They show up in crash reports, debug endpoints and process listings (<a href="https://cwe.mitre.org/data/definitions/526.html">CWE-526</a>). This is the main weakness of keeping the keyring in the environment.</li>
+<li><strong>Container images.</strong> A secret passed as a build argument is stored in the image’s layers. Docker’s documentation on <a href="https://docs.docker.com/build/building/secrets/">build secrets</a> explains how to avoid that.</li>
+<li><strong>People and machines.</strong> Backups, shared screenshots, old laptops, a teammate’s compromised account.</li>
+</ul>
+<p>The <a href="https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html">OWASP Secrets Management Cheat Sheet</a> covers how to store secrets so these leaks are less likely, and <a href="https://datatracker.ietf.org/doc/html/rfc8725">RFC 8725</a>, the JWT best-practices RFC, covers the token side.</p>
+<p>If a key has leaked, waiting is not an option, because whoever has it can create tokens for as long as it is trusted. Expiry doesn’t help either: a forged token carries whatever <code>exp</code> the attacker writes into it. In that case, do steps 2 and 4 together: make the new key active and remove the leaked one in the same restart.</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/leak-response.svg" alt="Timeline after a leaked key is removed: AuthService rejects forged tokens at once; a WorkoutEngine that can reach AuthService stops trusting the leaked key within 5 minutes, one that can’t within 20 minutes; real users move to tokens signed with the new key within 15 minutes." /></p>
+<p>AuthService stops accepting tokens signed with the leaked key at once, including tokens the attacker made. The other services stop when they next refresh their cached JWKS, within five minutes, or within 20 if they can’t reach AuthService (more on that below). Real users keep their sessions: their refresh tokens are still valid, and the next refresh gives them an access token signed with the new key. The app refreshes when the current access token is about to expire, so within 15 minutes everyone has a token signed with the new key. Until then, some of their requests can fail.</p>
+<h3>Why restarts and not <code>rotateKey</code></h3>
+<p><code>KeyRotationManager</code> can also rotate while running, through <code>rotateKey</code> and <code>removeOldKeys</code>, with no restart. The default flow still uses environment variables and restarts. AuthService can run as several instances behind a load balancer. If a key were rotated inside one running instance, that instance would sign with a key the others don’t have, and its tokens would fail verification whenever they reached one of the others. With the keyring in the environment, every instance always has the same keys. The runtime methods are there for the day the keyring moves into a shared secret store.</p>
+<h2>When things go wrong</h2>
+<p>Everything above assumes that WorkoutEngine can always reach AuthService. The interesting cases are the ones where it can’t.</p>
+<h3>AuthService can’t be reached</h3>
+<p><code>JWKSVerifier</code> keeps the last JWKS it fetched, so a short outage doesn’t stop anyone. But it doesn’t trust that copy forever. Three numbers control its cache:</p>
+<pre><code class="language-swift"><span class="token keyword">static</span> <span class="token keyword">let</span> `<span class="token keyword">default</span>` <span class="token operator">=</span> <span class="token class-name">Configuration</span><span class="token punctuation">(</span>
+    ttl<span class="token punctuation">:</span> <span class="token punctuation">.</span><span class="token function">minutes</span><span class="token punctuation">(</span><span class="token number">5</span><span class="token punctuation">)</span><span class="token punctuation">,</span>                  <span class="token comment">// fetch again when the cache is older than this</span>
+    minRefreshInterval<span class="token punctuation">:</span> <span class="token punctuation">.</span><span class="token function">seconds</span><span class="token punctuation">(</span><span class="token number">15</span><span class="token punctuation">)</span><span class="token punctuation">,</span>  <span class="token comment">// at most one attempt per 15 s, success or not</span>
+    maxStaleness<span class="token punctuation">:</span> <span class="token punctuation">.</span><span class="token function">minutes</span><span class="token punctuation">(</span><span class="token number">20</span><span class="token punctuation">)</span>         <span class="token comment">// stop trusting the cache after this</span>
+<span class="token punctuation">)</span>
+</code></pre>
+<p>The initializer checks <code>minRefreshInterval &lt; ttl &lt; maxStaleness</code> with a <code>precondition</code>, so a wrong combination crashes the service the moment the configuration is created, instead of quietly misbehaving. Together, the three numbers give the verifier three states:</p>
+<p><img src="/static/images/rotating-jwt-signing-keys/verifier-outage.svg" alt="JWKSVerifier states during an outage: healthy, degraded while AuthService is unreachable but the cache is under 20 minutes old, unavailable after that, and healthy again once a fetch succeeds." /></p>
+<ul>
+<li><strong>Degraded.</strong> Fetches fail, but the cached keys are less than 20 minutes old. Tokens signed with a known key are still accepted. A token with a new <code>kid</code> is rejected, because the refetch it triggers fails. Fetches are tried at most once every 15 seconds, so an outage doesn’t turn every incoming request into another request to AuthService.</li>
+<li><strong>Unavailable.</strong> 20 minutes after the last successful fetch, the verifier rejects every token. It <em>fails closed</em>.</li>
+<li><strong>Healthy again.</strong> The first fetch that succeeds puts everything back to normal. No restart is needed.</li>
+</ul>
+<p>Each change of state is logged once (a warning, an error, a notice), not once per request, so an outage leaves a few clear lines in the log rather than thousands.</p>
+<p><strong>Why fail closed?</strong> Because a verifier that can’t reach AuthService can’t learn that a key was removed either. If it trusted its cache forever, a leaked key that was removed from AuthService would stay valid at that service for as long as the outage lasts. The 20-minute limit puts an upper bound on that.</p>
+<p><strong>Why 20 minutes?</strong> With steady traffic, the last successful fetch happened at most 5 minutes before the outage started, so the verifier fails closed 15 to 20 minutes after it starts. If AuthService itself is down, nobody can sign in or refresh, and the last access tokens it issued expire 15 minutes after it went down. So when the verifier starts refusing tokens, there are none left to refuse. The limit only really bites when AuthService is up but WorkoutEngine can’t reach it, for example because of a network or DNS problem between the two. Users still get new tokens through the gateway, and after 20 minutes WorkoutEngine answers every request with <code>401</code>. That’s what the single error line in the log is for.</p>
+<h3>Other things that can go wrong</h3>
+<table>
+<thead>
+<tr>
+<th>What goes wrong</th>
+<th>What happens</th>
+<th>How bad it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The new key becomes active while a verifier can’t reach AuthService</td>
+<td>Tokens with the new <code>kid</code> are unknown to that verifier, and the refetch fails</td>
+<td><code>401</code> at that service until it can fetch again. Waiting at least 5 minutes between step 1 and step 2 means every healthy verifier already has the new key.</td>
+</tr>
+<tr>
+<td>The old key is removed before its tokens have expired</td>
+<td>Those tokens now have an unknown <code>kid</code> everywhere</td>
+<td>Some requests fail for up to 15 minutes. The app refreshes shortly before a token expires, not on a <code>401</code>. Nobody is signed out.</td>
+</tr>
+<tr>
+<td>A typo in <code>JWT_ACTIVE_KID</code>, or a broken keyring</td>
+<td>AuthService refuses to start</td>
+<td>The new version never comes up, instead of failing on every login.</td>
+</tr>
+<tr>
+<td>Every private key is lost</td>
+<td>Create a new keyring and restart</td>
+<td>Same as a leak: every access token stops working, the app gets new ones within 15 minutes, refresh tokens still work.</td>
+</tr>
+<tr>
+<td>AuthService returns a JWKS that can’t be parsed</td>
+<td>The fetch counts as failed</td>
+<td>Same as an outage: the old cache keeps working until it is 20 minutes old.</td>
+</tr>
+<tr>
+<td>Someone sends tokens with made-up <code>kid</code>s</td>
+<td>Each one would trigger a refetch</td>
+<td>At most one fetch every 15 seconds per WorkoutEngine instance, whatever the traffic.</td>
+</tr>
+</tbody>
+</table>
+<p>None of these cases sign a user out, because refresh tokens don’t depend on the signing key. The worst any of them does is make some requests fail for a few minutes.</p>
+<p>The next article turns the tables. With Sign in with Apple, Apple signs the token and AuthService is the one verifying it, against the <a href="https://appleid.apple.com/auth/keys">public keys Apple publishes</a> as a JWKS, just like the one in this article. It covers what Vapor checks for you, the nonce check it leaves to you, and how an Apple ID is linked to an account that already exists.</p>
+			</article>
+		</main>
+		<footer>
+			<p>
+				Built with 
+				<a href="https://github.com/loopwerk/Saga">Saga</a>
+			</p>
+		</footer>
+	</body>
+</html>

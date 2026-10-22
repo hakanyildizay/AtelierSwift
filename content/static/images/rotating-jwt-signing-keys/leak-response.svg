@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" width="760" height="400" role="img" aria-labelledby="title desc">
+  <title id="title">After a leaked key is removed</title>
+  <desc id="desc">At minute 0 AuthService restarts with the leaked key removed and a new key active. AuthService rejects tokens signed with the leaked key at once. A WorkoutEngine that can reach AuthService still trusts the leaked key until its next cache refresh, within 5 minutes. A WorkoutEngine that can't reach AuthService keeps trusting it until its cache is 20 minutes old, then rejects every token. Real users may get 401 errors on tokens signed with the leaked key until the app refreshes, within 15 minutes; their refresh tokens are not affected.</desc>
+
+  <defs>
+    <linearGradient id="fade-amber" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#e3b341" stop-opacity="0.35"/>
+      <stop offset="0.7" stop-color="#e3b341" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#e3b341" stop-opacity="0"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .event { font-size: 12.5px; font-weight: 600; fill: #e6edf3; }
+      .tick { font-size: 10.5px; fill: #8b949e; }
+      .row { font-size: 12.5px; font-weight: 600; fill: #e6edf3; }
+      .rowsub { font-size: 10.5px; fill: #8b949e; }
+      .bar { font-size: 11px; font-weight: 600; }
+      .small { font-size: 10px; fill: #e6edf3; }
+      .muted { font-size: 11.5px; fill: #8b949e; }
+    </style>
+  </defs>
+
+  <!-- Canvas -->
+  <rect x="0.5" y="0.5" width="759" height="399" rx="12" fill="#161b22" stroke="#30363d"/>
+
+  <!-- Event -->
+  <circle cx="210" cy="32" r="5" fill="#d2a8ff"/>
+  <text x="222" y="36" class="sans event">Restart: leaked key removed, new key active</text>
+
+  <!-- Axis -->
+  <line x1="210" y1="56" x2="736" y2="56" stroke="#30363d" stroke-width="1.5"/>
+  <g class="sans tick" text-anchor="middle">
+    <line x1="210" y1="52" x2="210" y2="60" stroke="#8b949e"/>
+    <text x="210" y="74">0</text>
+    <line x1="320" y1="52" x2="320" y2="60" stroke="#8b949e"/>
+    <text x="320" y="74">5 min</text>
+    <line x1="540" y1="52" x2="540" y2="60" stroke="#8b949e"/>
+    <text x="540" y="74">15 min</text>
+    <line x1="650" y1="52" x2="650" y2="60" stroke="#8b949e"/>
+    <text x="650" y="74">20 min</text>
+  </g>
+
+  <!-- Guides -->
+  <g stroke="#30363d" stroke-width="1" stroke-dasharray="3 4">
+    <line x1="210" y1="82" x2="210" y2="300"/>
+    <line x1="320" y1="82" x2="320" y2="300"/>
+    <line x1="540" y1="82" x2="540" y2="300"/>
+    <line x1="650" y1="82" x2="650" y2="300"/>
+  </g>
+
+  <!-- Row labels -->
+  <g class="sans">
+    <text x="24" y="104" class="row">AuthService</text>
+    <text x="24" y="119" class="rowsub">its own JWTMiddleware</text>
+    <text x="24" y="156" class="row">WorkoutEngine</text>
+    <text x="24" y="171" class="rowsub">can reach AuthService</text>
+    <text x="24" y="208" class="row">WorkoutEngine</text>
+    <text x="24" y="223" class="rowsub">can't reach AuthService</text>
+    <text x="24" y="260" class="row">Real users</text>
+    <text x="24" y="275" class="rowsub">refresh tokens still valid</text>
+  </g>
+
+  <!-- AuthService -->
+  <rect x="212" y="96" width="522" height="26" rx="5" fill="#3fb950" fill-opacity="0.2" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="222" y="113" class="sans bar" fill="#3fb950">rejects forged tokens at once</text>
+
+  <!-- WorkoutEngine, reachable -->
+  <rect x="212" y="148" width="106" height="26" rx="5" fill="#ff7b72" fill-opacity="0.25" stroke="#ff7b72" stroke-opacity="0.8"/>
+  <text x="265" y="165" class="sans bar" fill="#ff7b72" text-anchor="middle">trusts leaked key</text>
+  <rect x="322" y="148" width="412" height="26" rx="5" fill="#3fb950" fill-opacity="0.2" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="332" y="165" class="sans bar" fill="#3fb950">rejects forged tokens after its next JWKS refresh</text>
+
+  <!-- WorkoutEngine, unreachable -->
+  <rect x="212" y="200" width="436" height="26" rx="5" fill="#ff7b72" fill-opacity="0.25" stroke="#ff7b72" stroke-opacity="0.8"/>
+  <text x="222" y="217" class="sans bar" fill="#ff7b72">still trusts the leaked key from its cached JWKS</text>
+  <rect x="652" y="200" width="82" height="26" rx="5" fill="#ff7b72" fill-opacity="0.08" stroke="#ff7b72" stroke-opacity="0.6" stroke-dasharray="4 3"/>
+  <text x="693" y="217" class="sans bar" fill="#ff7b72" text-anchor="middle">rejects all</text>
+
+  <!-- Users -->
+  <rect x="212" y="248" width="400" height="16" rx="4" fill="url(#fade-amber)"/>
+  <text x="220" y="260" class="sans small">tokens signed with the leaked key: some requests get 401</text>
+  <rect x="212" y="270" width="522" height="16" rx="4" fill="#3fb950" fill-opacity="0.3" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="220" y="282" class="sans small">tokens signed with the new key, as the app refreshes</text>
+
+  <!-- Footer -->
+  <line x1="24" y1="318" x2="736" y2="318" stroke="#30363d"/>
+  <text x="24" y="342" class="sans muted">A forged token can carry any expiry date, so waiting doesn't help: only removing the key stops it.</text>
+  <text x="24" y="360" class="sans muted">Refresh tokens aren't signed with this key, so nobody has to sign in again.</text>
+  <text x="24" y="378" class="sans muted">The red bars are the exposure window: at most 5 minutes, or 20 if a verifier is cut off.</text>
+</svg>
