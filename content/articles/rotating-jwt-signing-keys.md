@@ -42,6 +42,91 @@ When a token arrives, the verifier reads the `kid`, picks the public key with th
 
 The key ids here are just the date the key was created. A `kid` can be any string, but a date shows at a glance how old a key is.
 
+## Signing and verifying a token
+
+A [JWT](https://datatracker.ietf.org/doc/html/rfc7519) has three parts, each base64url-encoded and joined with dots: `header.payload.signature`. *Signing* means computing the signature over `header.payload` with the private key. *Verifying* means checking that signature with the matching public key. If even one character of the header or payload changes, the check fails.
+
+The two happen at different times and in different places:
+
+![Sequence diagram. Sign, once per login or refresh: AuthService uses the database, builds a UserPayload, turns header and payload into a base64url string, signs that string with the active private key and returns the token. Verify, on every request: WorkoutEngine reads the kid from the header, finds the public key in its cached JWKS, checks the signature and the expiry, and answers 200 or 401 without calling AuthService or the database.](/static/images/rotating-jwt-signing-keys/sign-verify.svg)
+
+### When a token is signed
+
+Only when AuthService hands out a new access token: on login, after email verification, on Sign in with Apple, and on every refresh. All four call `User.generateToken`, which fills in a `UserPayload` and signs it. Both shortened:
+
+```swift
+public struct UserPayload: JWTPayload {
+    public var subject: SubjectClaim        // "sub": the user's email
+    public var issuedAt: IssuedAtClaim      // "iat"
+    public var expiration: ExpirationClaim  // "exp": now + 15 minutes
+    public var userId: String
+    public var role: RoleEnum               // admin, free, tier1, tier2
+    public var isAdmin: Bool
+
+    /// Runs after the signature check.
+    public func verify(using algorithm: some JWTAlgorithm) async throws {
+        try self.expiration.verifyNotExpired()
+    }
+}
+```
+
+```swift
+public func generateToken(req: Request) async throws -> (String, Date) {
+    let jwt = UserPayload(subject: .init(value: self.email),
+                          userId: try self.requireID().uuidString,
+                          role: try await self.getUserRole(req: req).toRoleEnum())
+
+    guard let manager = req.application.keyRotationManager else {
+        throw Abort(.internalServerError, reason: "KeyRotationManager not configured")
+    }
+    let token = try await manager.signToken(jwt)   // active key, kid in the header
+    return (token, jwt.expiration.value)
+}
+```
+
+`generateToken` doesn't choose a key. `signToken` uses whichever key is active, which is what lets the key change without touching this code. `KeyRotationManager` is covered below.
+
+### When a token is verified
+
+On every request that needs to know who the user is. WorkoutEngine does it with `req.verifiedUserPayload()`, for example before handing out a video URL:
+
+```swift
+// WorkoutEngine
+@Sendable func getVideo(req: Request) async throws -> VideoResponseDTO {
+    guard await req.verifiedUserPayload() != nil else {
+        throw Abort(.unauthorized)
+    }
+    // …
+}
+
+// ELabModels, Request+Ext.swift
+public func verifiedUserPayload() async -> UserPayload? {
+    guard let token = headers.bearerAuthorization?.token else { return nil }
+    return await JWKSVerifier.shared.payload(for: token)
+}
+```
+
+AuthService verifies its own tokens too, on `GET /api/user` and `POST /api/auth/logoutAll`, through a small middleware that stores the user id and role for the handler:
+
+```swift
+public struct JWTMiddleware: AsyncMiddleware {
+    public func respond(to request: Request, chainingTo next: AsyncResponder) async throws -> Response {
+        do {
+            let userPayload = try await request.jwt.verify(as: UserPayload.self)
+            request.additionalInfo = userPayload.userId
+            request.roleInfo = userPayload.role
+            return try await next.respond(to: request)
+        } catch {
+            throw Abort(.unauthorized)
+        }
+    }
+}
+```
+
+The important line is `try await request.jwt.verify(as: UserPayload.self)`. It does more than decode the token. It takes the token from the `Authorization: Bearer` header (and answers `401` if there is none), reads the `kid` from the token's header, picks the public key with that id, checks the signature, and then calls `UserPayload.verify(using:)` to check the expiry. Only if all of that passes do you get a `UserPayload` back. WorkoutEngine runs the same checks inside `JWKSVerifier`, with `keys.verify(token, as: UserPayload.self)` on its cached keys. If any check fails, the token is rejected: `JWTMiddleware` answers `401`, and `verifiedUserPayload()` returns `nil`, which `getVideo` turns into a `401`.
+
+Verifying needs no database and no call to AuthService, which is what makes it cheap enough to run on every request. It is also why a signed token stays valid until it expires, even after logout, as [the previous article](/articles/keeping-users-signed-in/) explained in "What logout can't do".
+
 ## The keyring
 
 The keys reach AuthService through two environment variables:
