@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 520" width="760" height="520" role="img" aria-labelledby="title desc">
+  <title id="title">Sign in with Apple server-to-server notifications</title>
+  <desc id="desc">Apple posts a JSON body with a signed JWT to the endpoint registered on the primary App ID. AuthService verifies the signature with Apple's public keys, checks the issuer and that the audience is APPLE_APP_ID, answers 200 and puts the event on a queue. A worker finds the user whose appleUserId equals the event's sub and acts on the event type. consent-revoked, the user stopped using Sign in with Apple for the app: revoke all refresh tokens and keep the link. account-deleted, the user deleted their Apple Account: revoke all sessions and unlink the Apple ID. email-disabled, the user turned Hide My Email forwarding off: stop sending email to the relay address. email-enabled, the user turned forwarding back on: allow email again. The queue and the worker are planned, not built yet.</desc>
+
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+    </marker>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .title { font-size: 14px; font-weight: 600; fill: #e6edf3; }
+      .sub { font-size: 11px; fill: #8b949e; }
+      .label { font-size: 12px; font-weight: 600; fill: #e6edf3; }
+      .code { font-size: 11px; fill: #a5d6ff; }
+      .note { font-size: 11.5px; fill: #c9d1d9; }
+      .small { font-size: 10.5px; fill: #8b949e; }
+      .head { font-size: 10.5px; font-weight: 600; fill: #8b949e; letter-spacing: 0.06em; }
+      .type { font-size: 12px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <!-- Canvas -->
+  <rect x="0.5" y="0.5" width="759" height="519" rx="12" fill="#161b22" stroke="#30363d"/>
+
+  <!-- Participants -->
+  <g class="sans" text-anchor="middle">
+    <rect x="25" y="24" width="150" height="48" rx="8" fill="#21262d" stroke="#d2a8ff" stroke-opacity="0.7"/>
+    <text x="100" y="45" class="title">Apple</text>
+    <text x="100" y="61" class="sub">user changed something</text>
+
+    <rect x="265" y="24" width="160" height="48" rx="8" fill="#21262d" stroke="#e3b341" stroke-opacity="0.7"/>
+    <text x="345" y="45" class="title">AuthService</text>
+    <text x="345" y="61" class="sub">registered endpoint</text>
+
+    <rect x="490" y="24" width="105" height="48" rx="8" fill="#21262d" stroke="#8b949e" stroke-dasharray="5 4"/>
+    <text x="542" y="45" class="title">Queue</text>
+    <text x="542" y="61" class="sub">planned</text>
+
+    <rect x="630" y="24" width="105" height="48" rx="8" fill="#21262d" stroke="#8b949e" stroke-dasharray="5 4"/>
+    <text x="682" y="45" class="title">Worker</text>
+    <text x="682" y="61" class="sub">planned</text>
+  </g>
+
+  <!-- Arrows -->
+  <g class="sans">
+    <line x1="175" y1="48" x2="261" y2="48" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+    <text x="218" y="40" class="small" text-anchor="middle">POST</text>
+    <line x1="425" y1="48" x2="486" y2="48" stroke="#8b949e" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrow-gray)"/>
+    <text x="456" y="40" class="small" text-anchor="middle">event</text>
+    <line x1="595" y1="48" x2="626" y2="48" stroke="#8b949e" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrow-gray)"/>
+  </g>
+
+  <!-- Body and checks -->
+  <g class="mono">
+    <text x="100" y="98" class="code" text-anchor="middle">{ "payload": "&lt;JWT&gt;" }</text>
+  </g>
+  <g class="sans">
+    <text x="100" y="116" class="small" text-anchor="middle">signed with Apple's keys</text>
+    <text x="345" y="98" class="note" text-anchor="middle">signature · iss · aud = APPLE_APP_ID</text>
+    <text x="345" y="116" class="small" text-anchor="middle">then answers 200</text>
+    <text x="612" y="98" class="note" text-anchor="middle">find the user where</text>
+    <text x="612" y="116" class="code mono" text-anchor="middle">appleUserId == events.sub</text>
+  </g>
+
+  <!-- Table header -->
+  <line x1="25" y1="150" x2="735" y2="150" stroke="#30363d"/>
+  <g class="sans">
+    <text x="40" y="174" class="head">EVENTS.TYPE</text>
+    <text x="215" y="174" class="head">THE USER</text>
+    <text x="490" y="174" class="head">THE WORKER</text>
+  </g>
+
+  <!-- Rows -->
+  <g class="sans">
+    <!-- consent-revoked -->
+    <rect x="25" y="188" width="710" height="64" rx="8" fill="#21262d" stroke="#30363d"/>
+    <rect x="25" y="188" width="4" height="64" rx="2" fill="#ff7b72"/>
+    <text x="40" y="225" class="type mono" fill="#ff7b72">consent-revoked</text>
+    <text x="215" y="216" class="note">stopped using Sign in with Apple</text>
+    <text x="215" y="234" class="small">for this app, in Apple Account settings</text>
+    <text x="490" y="216" class="note">revoke every refresh token</text>
+    <text x="490" y="234" class="small">keep the link, the same sub can come back</text>
+
+    <!-- account-deleted -->
+    <rect x="25" y="262" width="710" height="64" rx="8" fill="#21262d" stroke="#30363d"/>
+    <rect x="25" y="262" width="4" height="64" rx="2" fill="#ff7b72"/>
+    <text x="40" y="299" class="type mono" fill="#ff7b72">account-deleted</text>
+    <text x="215" y="290" class="note">deleted their Apple Account</text>
+    <text x="215" y="308" class="small">all Apple tokens become invalid</text>
+    <text x="490" y="290" class="note">revoke every refresh token</text>
+    <text x="490" y="308" class="small">and unlink the Apple ID</text>
+
+    <!-- email-disabled -->
+    <rect x="25" y="336" width="710" height="64" rx="8" fill="#21262d" stroke="#30363d"/>
+    <rect x="25" y="336" width="4" height="64" rx="2" fill="#e3b341"/>
+    <text x="40" y="373" class="type mono" fill="#e3b341">email-disabled</text>
+    <text x="215" y="364" class="note">turned Hide My Email forwarding off</text>
+    <text x="215" y="382" class="small">the relay address stops delivering</text>
+    <text x="490" y="364" class="note">stop emailing the relay address</text>
+    <text x="490" y="382" class="small">no bounces from SES</text>
+
+    <!-- email-enabled -->
+    <rect x="25" y="410" width="710" height="64" rx="8" fill="#21262d" stroke="#30363d"/>
+    <rect x="25" y="410" width="4" height="64" rx="2" fill="#3fb950"/>
+    <text x="40" y="447" class="type mono" fill="#3fb950">email-enabled</text>
+    <text x="215" y="438" class="note">turned forwarding back on</text>
+    <text x="215" y="456" class="small">the relay address works again</text>
+    <text x="490" y="438" class="note">allow emails again</text>
+    <text x="490" y="456" class="small">verification, password reset, …</text>
+  </g>
+
+  <text x="380" y="500" class="small sans" text-anchor="middle">Dashed boxes are planned, not built yet.</text>
+</svg>

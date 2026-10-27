@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 350" width="760" height="350" role="img" aria-labelledby="title desc">
+  <title id="title">Account pre-hijacking</title>
+  <desc id="desc">An attacker signs up with the victim's email and their own password, but can't verify the account because they can't read the victim's inbox. Later the victim uses Sign in with Apple with the same email, and AuthService links the Apple ID to that account and marks it verified. If the attacker's password were kept, the attacker could now log in to the victim's account. Because AuthService replaces the password of an account that was never verified, the attacker's login fails with 401.</desc>
+
+  <defs>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+    </marker>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .head { font-size: 12.5px; font-weight: 700; }
+      .note { font-size: 11.5px; fill: #c9d1d9; }
+      .code { font-size: 11px; fill: #a5d6ff; }
+      .small { font-size: 10.5px; fill: #8b949e; }
+      .row { font-size: 12px; font-weight: 600; fill: #e6edf3; }
+      .bar { font-size: 11.5px; font-weight: 600; }
+      .muted { font-size: 11.5px; fill: #8b949e; }
+    </style>
+  </defs>
+
+  <!-- Canvas -->
+  <rect x="0.5" y="0.5" width="759" height="349" rx="12" fill="#161b22" stroke="#30363d"/>
+
+  <!-- Step 1 -->
+  <rect x="24" y="24" width="220" height="92" rx="6" fill="#21262d" stroke="#ff7b72" stroke-opacity="0.7"/>
+  <text x="40" y="44" class="sans head" fill="#ff7b72">1 · Attacker signs up</text>
+  <text x="40" y="63" class="sans note">with <tspan class="mono code">victim@example.com</tspan></text>
+  <text x="40" y="80" class="sans note">and their own password</text>
+  <text x="40" y="104" class="sans small">can't verify: no access to the inbox</text>
+
+  <line x1="244" y1="70" x2="266" y2="70" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+
+  <!-- Step 2 -->
+  <rect x="270" y="24" width="220" height="92" rx="6" fill="#21262d" stroke="#58a6ff" stroke-opacity="0.7"/>
+  <text x="286" y="44" class="sans head" fill="#58a6ff">2 · Victim taps</text>
+  <text x="286" y="63" class="sans note">Sign in with Apple</text>
+  <text x="286" y="80" class="sans note">Apple vouches for</text>
+  <text x="286" y="97" class="sans note"><tspan class="mono code">victim@example.com</tspan></text>
+
+  <line x1="490" y1="70" x2="512" y2="70" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+
+  <!-- Step 3 -->
+  <rect x="516" y="24" width="220" height="92" rx="6" fill="#21262d" stroke="#e3b341" stroke-opacity="0.7"/>
+  <text x="532" y="44" class="sans head" fill="#e3b341">3 · AuthService links</text>
+  <text x="532" y="63" class="sans note">the Apple ID to the</text>
+  <text x="532" y="80" class="sans note">existing account and</text>
+  <text x="532" y="97" class="sans note">marks it verified</text>
+
+  <!-- Step 4 -->
+  <text x="24" y="150" class="sans head" fill="#ff7b72">4 · Attacker logs in with the password from step 1</text>
+
+  <text x="24" y="185" class="sans row">If the password were kept</text>
+  <text x="24" y="200" class="sans small">link only</text>
+  <rect x="230" y="174" width="506" height="30" rx="5" fill="#ff7b72" fill-opacity="0.2" stroke="#ff7b72" stroke-opacity="0.8"/>
+  <text x="246" y="194" class="sans bar" fill="#ff7b72">✗ 200: the attacker is in the victim's account</text>
+
+  <text x="24" y="237" class="sans row">What AuthService does</text>
+  <text x="24" y="252" class="sans small">link and replace the password</text>
+  <rect x="230" y="226" width="506" height="30" rx="5" fill="#3fb950" fill-opacity="0.2" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="246" y="246" class="sans bar" fill="#3fb950">✓ 401: that password no longer works</text>
+
+  <!-- Footer -->
+  <line x1="24" y1="282" x2="736" y2="282" stroke="#30363d"/>
+  <text x="24" y="306" class="sans muted">The account belongs to whoever proves they own the email. Here that's the victim, through Apple.</text>
+  <text x="24" y="324" class="sans muted">They can still set a password of their own later with the forgot-password flow.</text>
+</svg>

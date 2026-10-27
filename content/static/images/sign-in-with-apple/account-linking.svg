@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 490" width="760" height="490" role="img" aria-labelledby="title desc">
+  <title id="title">Which account an Apple ID signs in to</title>
+  <desc id="desc">After the identity token and nonce are checked, AuthService asks three questions. If the Apple ID is already linked to an account, it logs in that account. If not, and the token has no verified email, it answers 400. If an account already uses that email, it links the Apple ID to it, and if that account was never verified it also replaces its password with a random one. Otherwise it creates a new verified account with a random password. Every path except the 400 ends with the usual access and refresh tokens.</desc>
+
+  <defs>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+    </marker>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .q { font-size: 12.5px; font-weight: 600; fill: #e6edf3; }
+      .head { font-size: 12.5px; font-weight: 700; }
+      .note { font-size: 11.5px; fill: #c9d1d9; }
+      .code { font-size: 11px; fill: #a5d6ff; }
+      .small { font-size: 10.5px; fill: #8b949e; }
+      .yes { font-size: 11px; font-weight: 700; fill: #3fb950; }
+      .no { font-size: 11px; font-weight: 700; fill: #ff7b72; }
+      .muted { font-size: 11.5px; fill: #8b949e; }
+    </style>
+  </defs>
+
+  <!-- Canvas -->
+  <rect x="0.5" y="0.5" width="759" height="489" rx="12" fill="#161b22" stroke="#30363d"/>
+
+  <!-- Start -->
+  <rect x="40" y="24" width="300" height="34" rx="17" fill="#21262d" stroke="#30363d"/>
+  <text x="190" y="45" class="sans note" text-anchor="middle">Identity token and nonce checked</text>
+  <line x1="190" y1="58" x2="190" y2="78" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+
+  <!-- Q1 -->
+  <rect x="40" y="80" width="300" height="44" rx="6" fill="#21262d" stroke="#e3b341" stroke-opacity="0.7"/>
+  <text x="190" y="106" class="sans q" text-anchor="middle">Apple ID (<tspan class="mono code" style="font-size:12px">sub</tspan>) already linked?</text>
+  <line x1="340" y1="102" x2="436" y2="102" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <text x="388" y="96" class="sans yes" text-anchor="middle">yes</text>
+
+  <rect x="440" y="80" width="296" height="44" rx="6" fill="#3fb950" fill-opacity="0.12" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="456" y="98" class="sans head" fill="#3fb950">① Returning user</text>
+  <text x="456" y="115" class="sans note">log in that account</text>
+
+  <line x1="190" y1="124" x2="190" y2="148" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <text x="200" y="141" class="sans no">no</text>
+
+  <!-- Q2 -->
+  <rect x="40" y="150" width="300" height="44" rx="6" fill="#21262d" stroke="#e3b341" stroke-opacity="0.7"/>
+  <text x="190" y="176" class="sans q" text-anchor="middle">Verified email in the token?</text>
+  <line x1="340" y1="172" x2="436" y2="172" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <text x="388" y="166" class="sans no" text-anchor="middle">no</text>
+
+  <rect x="440" y="150" width="296" height="44" rx="6" fill="#ff7b72" fill-opacity="0.1" stroke="#ff7b72" stroke-opacity="0.7"/>
+  <text x="456" y="168" class="sans head" fill="#ff7b72">400 Bad Request</text>
+  <text x="456" y="185" class="sans note">the app must request the email scope</text>
+
+  <line x1="190" y1="194" x2="190" y2="218" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <text x="200" y="211" class="sans yes">yes</text>
+
+  <!-- Q3 -->
+  <rect x="40" y="220" width="300" height="44" rx="6" fill="#21262d" stroke="#e3b341" stroke-opacity="0.7"/>
+  <text x="190" y="246" class="sans q" text-anchor="middle">An account with that email?</text>
+  <line x1="340" y1="242" x2="436" y2="242" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <text x="388" y="236" class="sans yes" text-anchor="middle">yes</text>
+
+  <rect x="440" y="220" width="296" height="104" rx="6" fill="#3fb950" fill-opacity="0.12" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="456" y="240" class="sans head" fill="#3fb950">② Link the Apple ID to it</text>
+  <text x="456" y="258" class="sans note">set <tspan class="mono code">appleUserId = sub</tspan></text>
+  <line x1="456" y1="270" x2="720" y2="270" stroke="#30363d"/>
+  <text x="456" y="289" class="sans note" style="fill:#e3b341;font-weight:600">Never verified? Replace its password</text>
+  <text x="456" y="306" class="sans small">whoever set it may not own the email;</text>
+  <text x="456" y="319" class="sans small">then mark the account verified</text>
+
+  <line x1="190" y1="264" x2="190" y2="340" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <text x="200" y="306" class="sans no">no</text>
+
+  <!-- New account -->
+  <rect x="40" y="342" width="300" height="78" rx="6" fill="#3fb950" fill-opacity="0.12" stroke="#3fb950" stroke-opacity="0.7"/>
+  <text x="56" y="362" class="sans head" fill="#3fb950">③ Create an account</text>
+  <text x="56" y="380" class="sans note">verified, <tspan class="mono code">appleUserId = sub</tspan>, name from the app</text>
+  <text x="56" y="397" class="sans note">random password nobody knows</text>
+  <text x="56" y="412" class="sans small">Apple only, until the user resets the password</text>
+
+  <!-- Footer -->
+  <line x1="24" y1="442" x2="736" y2="442" stroke="#30363d"/>
+  <text x="24" y="466" class="sans muted">Every green box ends in makeLoginResponse: the same access and refresh tokens as a password login.</text>
+</svg>
