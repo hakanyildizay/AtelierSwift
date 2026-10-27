@@ -17,7 +17,12 @@ func baseHtml(title pageTitle: String, @NodeBuilder children: () -> NodeConverti
         nav {
           a(class: "site-title", href: "/") { "Atelier Swift" }
           div(class: "nav-links") {
+            a(href: "/portfolio/") { "Portfolio" }
             a(href: "/articles/") { "Articles" }
+            a(class: "nav-cta", href: "mailto:hakanyildizay@gmail.com?subject=Working%20together") {
+              Node.raw(#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m2.5 7 9.5 6.5L21.5 7"/></svg>"#)
+              "Work with me"
+            }
           }
         }
       }
@@ -82,7 +87,10 @@ func renderTag<T>(context: PartitionedRenderingContext<T, ArticleMetadata>) -> N
 func renderPage(context: ItemRenderingContext<EmptyMetadata>) -> Node {
   baseHtml(title: context.item.title) {
     div(class: "page") {
-      h1 { context.item.title }
+      // The home page opens with its own hero heading instead.
+      if context.item.relativeSource.string != "index.md" {
+        h1 { context.item.title }
+      }
       Node.raw(Moon.shared.highlightCodeBlocks(in: context.item.body))
     }
   }

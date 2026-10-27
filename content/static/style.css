@@ -69,6 +69,62 @@ header nav {
   color: var(--text-strong);
 }
 
+.nav-links {
+  display: flex;
+  align-items: center;
+}
+
+/* "Work with me" mail button: an outlined pill in the accent colour. */
+.nav-links a.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.nav-links a.nav-cta:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.nav-cta svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* On phones the links move to their own row under the site title. */
+@media (max-width: 480px) {
+  header nav {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .site-title {
+    white-space: nowrap;
+  }
+
+  .nav-links {
+    width: 100%;
+    gap: 12px;
+  }
+
+  .nav-links a {
+    margin-left: 6px;
+  }
+
+  .nav-links a:first-child {
+    margin-left: 0;
+  }
+
+  .nav-links a.nav-cta {
+    margin-left: auto;
+  }
+}
+
 main {
   min-height: 60vh;
 }
@@ -253,4 +309,67 @@ th {
 
 ::selection {
   background: rgba(88, 166, 255, 0.35);
+}
+
+/* Home page hero: picture on the left, greeting centred beside it. */
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  margin: 8px 0 40px;
+}
+
+.hero img {
+  flex: 0 0 380px;
+  width: 380px;
+  border-radius: 16px;
+}
+
+.hero h1 {
+  font-size: 2.4rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+}
+
+.hero p {
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.social {
+  display: flex;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.social a {
+  color: var(--text-strong);
+}
+
+.social a:hover {
+  color: var(--link-hover);
+}
+
+.social svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+@media (max-width: 700px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+  }
+
+  .hero img {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .hero h1 {
+    font-size: 2rem;
+  }
 }
